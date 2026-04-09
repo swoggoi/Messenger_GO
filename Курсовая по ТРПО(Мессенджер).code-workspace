@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "Курсовая по ТРПО(Мессенджер)",
+			"path": ".."
+		},
+		{
+			"name": "Messenger_GO",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
