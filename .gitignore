@@ -1,2 +1,16 @@
+# Binaries
+bin/
+.idea/
+.vscode/
+*.swp
+*.swo
 .env
-*.env
+.env.local
+.env.*.local
+coverage.out
+.DS_Store
+Thumbs.db
+
+
+# Временно
+web/

@@ -1,0 +1,10 @@
+.git
+.idea
+.vscode
+*.exe
+*.log
+.env
+.env.local
+web/node_modules
+tmp/
+vendor/

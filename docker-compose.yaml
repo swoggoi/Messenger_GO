@@ -1,17 +1,58 @@
 version: '3.8'
 
 services:
+  app:
+    build: .
+    container_name: messenger-app
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - messenger-net
+    restart: unless-stopped
+
   postgres:
-    image: postgres:18.1-bookworm
+    image: postgres:16-alpine
+    container_name: messenger-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: messenger
+      POSTGRES_USER: messenger
+      POSTGRES_PASSWORD: messenger_pass
+      POSTGRES_DB: messenger_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - messenger-net
+
+  redis:
+    image: redis:alpine
+    container_name: messenger-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - messenger-net
+
+  kafka:
+    image: apache/kafka:latest
+    container_name: messenger-kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    networks:
+      - messenger-net
+
+networks:
+  messenger-net:
+    driver: bridge
 
 volumes:
   postgres_data:
+  redis_data:
