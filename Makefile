@@ -4,7 +4,7 @@ MIGRATIONS_PATH := ./migrations
 DOCKER_IMAGE := $(APP_NAME)-app
 DOCKER_COMPOSE := docker compose
 
-.PHONY: all run dev build test test-cover clean deps fmt lint migrate-up migrate-down migrate-force swagger docker-build docker-up docker-down docker-logs docker-clean help
+.PHONY: all run dev build test test-cover clean deps fmt lint migrate-up migrate-down migrate-force migrate-go-up migrate-go-down migrate-go-status migrate-go-force swagger docker-build docker-up docker-down docker-logs docker-clean help
 
 all: help
 
@@ -50,6 +50,19 @@ migrate-down:
 
 migrate-force:
 	migrate -path $(MIGRATIONS_PATH) -database "$(DB_SOURCE)" force $(v)
+
+# Воспроизводимый путь без установленного CLI migrate (используется start.bat).
+migrate-go-up:
+	go run ./cmd/migrate -path $(MIGRATIONS_PATH) up
+
+migrate-go-down:
+	go run ./cmd/migrate -path $(MIGRATIONS_PATH) down 1
+
+migrate-go-status:
+	go run ./cmd/migrate -path $(MIGRATIONS_PATH) status
+
+migrate-go-force:
+	go run ./cmd/migrate -path $(MIGRATIONS_PATH) force $(v)
 
 swagger:
 	swag init -g $(CMD_PATH)/main.go -o ./docs

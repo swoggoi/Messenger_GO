@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"image"
 	"image/jpeg"
 	_ "image/jpeg"
@@ -13,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"github.com/google/uuid"
 )
 
 const avatarSize = 256
+const maxAvatarRequestBytes = 8 << 20
 
 type UploadHandler struct {
 	uploadDir string
@@ -33,6 +34,7 @@ func (h *UploadHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		Image string `json:"image"`
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarRequestBytes)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
@@ -63,7 +65,7 @@ func (h *UploadHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+	filename := uuid.New().String() + ".jpg"
 	filePath := filepath.Join(h.uploadDir, filename)
 
 	if err := os.WriteFile(filePath, buf.Bytes(), 0644); err != nil {
@@ -71,7 +73,7 @@ func (h *UploadHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := "http://localhost:8080/uploads/" + filename
+	url := "/uploads/" + filename
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }

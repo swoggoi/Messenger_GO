@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -13,43 +14,39 @@ type contextKey string
 
 const UserIDKey contextKey = "user_id"
 
+func writeUnauthorized(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// AuthMiddleware validates the JWT on every protected operation. Frontend
+// redirects are never trusted as an authorisation boundary.
 func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
-			if header == "" {
-				http.Error(w, `{"error":"authorization header required"}`, http.StatusUnauthorized)
-				return
-			}
-
 			parts := strings.SplitN(header, " ", 2)
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, `{"error":"invalid authorization format"}`, http.StatusUnauthorized)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+				writeUnauthorized(w, "authorization header required")
 				return
 			}
 
-			tokenString := parts[1]
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return []byte(jwtSecret), nil
-			})
-
+			claims := jwt.MapClaims{}
+			token, err := jwt.ParseWithClaims(strings.TrimSpace(parts[1]), claims,
+				func(token *jwt.Token) (interface{}, error) {
+					return []byte(jwtSecret), nil
+				},
+				jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			)
 			if err != nil || !token.Valid {
-				http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
-				return
-			}
-
-			claims, ok := token.Claims.(jwt.MapClaims)
-			if !ok {
-				http.Error(w, `{"error":"invalid token claims"}`, http.StatusUnauthorized)
+				writeUnauthorized(w, "invalid token")
 				return
 			}
 
 			userID, err := parseUserID(claims["user_id"])
-			if err != nil {
-				http.Error(w, `{"error":"invalid token claims"}`, http.StatusUnauthorized)
+			if err != nil || userID == uuid.Nil {
+				writeUnauthorized(w, "invalid token claims")
 				return
 			}
 

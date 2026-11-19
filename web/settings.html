@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141414">
+  <title>БипЧат — настройки</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="rail" id="rail" data-active="settings.html"></nav>
+    <main class="page">
+      <h1>Настройки</h1>
+      <p class="sub">Аккаунт, конфиденциальность и внешний вид</p>
+      <div class="settings">
+        <div class="settings-nav">
+          <button class="active" data-tab="profile" type="button">Профиль</button>
+          <button data-tab="notifications" type="button">Уведомления</button>
+          <button data-tab="privacy" type="button">Конфиденциальность</button>
+          <button data-tab="appearance" type="button">Внешний вид</button>
+          <button data-tab="about" type="button">О приложении</button>
+        </div>
+        <div class="settings-body">
+          <section class="tab-panel active" id="tab-profile">
+            <h2 class="panel-title">Профиль</h2>
+            <div class="profile-head"><div class="avatar xl c-me">Б</div></div>
+            <div class="field"><label for="p-name">Имя и фамилия</label><input class="input" id="p-name" maxlength="120"></div>
+            <div class="field"><label for="p-user">Username</label><input class="input" id="p-user" maxlength="33"></div>
+            <div class="field"><label for="p-email">Почта</label><input class="input" id="p-email" type="email"></div>
+            <div class="field"><label for="p-group">Учебная группа</label><input class="input" id="p-group" disabled title="Учебная группа выбирается при регистрации"></div>
+            <div class="actions">
+              <button class="btn primary" id="save-profile" type="button">Сохранить изменения</button>
+              <button class="btn" id="logout" type="button">Выйти из аккаунта</button>
+            </div>
+            <div class="local-block">
+              <h3 class="panel-subtitle">Только у вас в браузере</h3>
+              <p class="sub">Эти значения не отправляются на сервер и видны только вам.</p>
+              <div class="field"><label for="lp-name">Имя, которое вижу я</label><input class="input" id="lp-name" maxlength="120" placeholder="Как вас зовут"></div>
+              <div class="field"><label for="lp-email">Почта, которую вижу я</label><input class="input" id="lp-email" type="email" maxlength="200" placeholder="Ваша почта"></div>
+              <div class="actions">
+                <button class="btn" id="save-local-profile" type="button">Сохранить локально</button>
+                <button class="btn" id="reset-local-profile" type="button">Сбросить</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-notifications">
+            <h2 class="panel-title">Уведомления</h2>
+            <p class="sub">Настройки сохраняются в этом браузере.</p>
+            <div class="switch-row">
+              <div><div class="t">Звук новых сообщений</div><div class="d">Короткий сигнал, когда приходит сообщение</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Звук новых сообщений" data-setting="sound"></button>
+            </div>
+            <div class="switch-row">
+              <div><div class="t">Уведомления браузера</div><div class="d">Системные уведомления о новых сообщениях</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Уведомления браузера" data-setting="desktop"></button>
+            </div>
+            <div class="switch-row">
+              <div><div class="t">Превью сообщений</div><div class="d">Всплывающая карточка с отправителем и текстом</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="true" aria-label="Превью сообщений" data-setting="preview"></button>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-privacy">
+            <h2 class="panel-title">Конфиденциальность</h2>
+            <p class="sub">По умолчанию почта других пользователей скрыта.</p>
+            <div class="switch-row">
+              <div><div class="t">Показывать почту</div><div class="d">Показывать адреса почты в профилях и контактах</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Показывать почту" data-setting="showEmail"></button>
+            </div>
+            <div class="about-text">Переключатель действует только в этом браузере. Вы также можете включить показ почты для отдельного контакта кнопкой «Изменить» в контактах или в профиле.</div>
+          </section>
+
+          <section class="tab-panel" id="tab-appearance">
+            <h2 class="panel-title">Внешний вид</h2>
+            <p class="sub">Настройки сохраняются в этом браузере.</p>
+            <div class="switch-row">
+              <div><div class="t">Компактный режим</div><div class="d">Меньше отступов в списках и чатах</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Компактный режим" data-setting="compact"></button>
+            </div>
+            <div class="switch-row">
+              <div><div class="t">Крупный текст</div><div class="d">Увеличить размер текста интерфейса</div></div>
+              <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Крупный текст" data-setting="largeText"></button>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-about">
+            <h2 class="panel-title">О БипЧате</h2>
+            <p class="sub">Мессенджер для студентов колледжа.</p>
+            <div class="about-list">
+              <div class="about-row"><span>Версия</span><span>1.0</span></div>
+              <div class="about-row"><span>Учебные группы</span><span>Т-491 – Т-495</span></div>
+              <div class="about-row"><span>Сервер</span><span>Go + PostgreSQL</span></div>
+            </div>
+            <p class="about-text">Пользуясь сервисом, вы принимаете пользовательское соглашение. Ознакомьтесь с его условиями ниже.</p>
+            <button class="btn" type="button" data-agreement>Пользовательское соглашение</button>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="agreement-modal" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="agreement-title">Пользовательское соглашение</h2>
+        <button class="icon-btn" type="button" id="agreement-close" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <iframe class="modal-frame" src="agreement.html" title="Пользовательское соглашение БипЧат"></iframe>
+      <div class="modal-foot"><button class="btn primary" type="button" id="agreement-accept">Понятно</button></div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

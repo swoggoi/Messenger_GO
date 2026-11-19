@@ -1,132 +1,126 @@
 package users
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"messenger/internal/core/domain"
 	middleware "messenger/internal/core/transport/http/middleware"
-	"messenger/internal/db"
+	core_errors "messenger/internal/errors"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/google/uuid"
+)
+
+var (
+	usernamePattern = regexp.MustCompile(`^[a-z0-9_]{3,32}$`)
+	emailPattern    = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 )
 
 type Handler struct {
-	pool *db.Pool
+	store Store
 }
 
-func NewHandler(pool *db.Pool) *Handler {
-	return &Handler{pool: pool}
+func NewHandler(store Store) *Handler {
+	return &Handler{store: store}
 }
 
-func (h *Handler) getUserByID(ctx context.Context, userID interface{}) (*domain.User, error) {
-	var user domain.User
-	query := `SELECT id, username, COALESCE(name, username), email, COALESCE(avatar_url, ''), created_at FROM users WHERE id = $1`
-	err := h.pool.QueryRow(ctx, query, userID).Scan(
-		&user.ID, &user.Username, &user.Name, &user.Email, &user.AvatarURL, &user.CreatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("user not found")
-		}
-		return nil, err
+func writeError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func currentUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	id, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return uuid.Nil, false
 	}
-	return &user, nil
+	return id, true
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey)
-	if userID == nil {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	userID, ok := currentUserID(w, r)
+	if !ok {
 		return
 	}
-
-	user, err := h.getUserByID(context.Background(), userID)
+	user, err := h.store.GetByID(r.Context(), userID)
 	if err != nil {
-		if err.Error() == "user not found" {
-			http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+		if errors.Is(err, core_errors.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(user)
+}
 
+// GetUser returns public fields of another user (no password hash, no group id).
+func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
+	if _, ok := currentUserID(w, r); !ok {
+		return
+	}
+	userID, err := uuid.Parse(r.PathValue("userID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	user, err := h.store.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, core_errors.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(user)
 }
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey)
-	if userID == nil {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	userID, ok := currentUserID(w, r)
+	if !ok {
 		return
 	}
 
-	var req struct {
-		Name      string `json:"name"`
-		Username  string `json:"username"`
-		Email     string `json:"email"`
-		AvatarURL string `json:"avatar_url"`
-	}
-
+	var req domain.UpdateProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.Name = strings.Join(strings.Fields(req.Name), " ")
+	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.AvatarURL = strings.TrimSpace(req.AvatarURL)
+
+	switch {
+	case req.Name == "" || len(req.Name) > 100:
+		writeError(w, http.StatusBadRequest, "укажите имя")
+		return
+	case !usernamePattern.MatchString(req.Username):
+		writeError(w, http.StatusBadRequest, "username должен содержать 3–32 символа (латиница, цифры, подчёркивание)")
+		return
+	case !emailPattern.MatchString(req.Email) || len(req.Email) > 255:
+		writeError(w, http.StatusBadRequest, "введите корректный адрес электронной почты")
 		return
 	}
 
-	updates := []string{}
-	params := []interface{}{}
-	paramCount := 1
-
-	if req.Name != "" {
-		updates = append(updates, "name = $"+fmt.Sprint(paramCount))
-		params = append(params, req.Name)
-		paramCount++
-	}
-	if req.Username != "" {
-		updates = append(updates, "username = $"+fmt.Sprint(paramCount))
-		params = append(params, req.Username)
-		paramCount++
-	}
-	if req.Email != "" {
-		updates = append(updates, "email = $"+fmt.Sprint(paramCount))
-		params = append(params, req.Email)
-		paramCount++
-	}
-	if req.AvatarURL != "" {
-		updates = append(updates, "avatar_url = $"+fmt.Sprint(paramCount))
-		params = append(params, req.AvatarURL)
-		paramCount++
-	}
-
-	if len(updates) == 0 {
-		http.Error(w, `{"error":"no fields to update"}`, http.StatusBadRequest)
-		return
-	}
-
-	updates = append(updates, "updated_at = CURRENT_TIMESTAMP")
-	query := "UPDATE users SET " + strings.Join(updates, ", ") + " WHERE id = $" + fmt.Sprint(paramCount)
-	params = append(params, userID)
-
-	_, err := h.pool.Exec(context.Background(), query, params...)
+	user, err := h.store.UpdateProfile(r.Context(), userID, req)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			http.Error(w, `{"error":"username или email уже заняты"}`, http.StatusConflict)
-			return
+		switch {
+		case errors.Is(err, core_errors.ErrDuplicateUser), errors.Is(err, core_errors.ErrValidation):
+			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, core_errors.ErrUserNotFound):
+			writeError(w, http.StatusNotFound, "user not found")
+		default:
+			writeError(w, http.StatusInternalServerError, "internal server error")
 		}
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-		return
-	}
-
-	user, err := h.getUserByID(context.Background(), userID)
-	if err != nil {
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -138,40 +132,23 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+	// Поиск по @username должен работать так же, как по username без символа «@».
+	query := strings.TrimPrefix(strings.TrimSpace(r.URL.Query().Get("q")), "@")
 	if query == "" {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]domain.User{})
 		return
 	}
 
-	searchQuery := "%" + strings.ToLower(query) + "%"
-	sql := `
-		SELECT id, username, COALESCE(name, username), email, COALESCE(avatar_url, '')
-		FROM users
-		WHERE LOWER(username) LIKE $1
-		   OR LOWER(COALESCE(name, username)) LIKE $1
-		   OR LOWER(email) LIKE $1
-		ORDER BY username
-		LIMIT 20
-	`
-
-	rows, err := h.pool.Query(context.Background(), sql, searchQuery)
+	users, err := h.store.Search(r.Context(), userID, query)
 	if err != nil {
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	defer rows.Close()
-
-	users := []domain.User{}
-	for rows.Next() {
-		var user domain.User
-		if err := rows.Scan(&user.ID, &user.Username, &user.Name, &user.Email, &user.AvatarURL); err != nil {
-			continue
-		}
-		users = append(users, user)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(users)
 }

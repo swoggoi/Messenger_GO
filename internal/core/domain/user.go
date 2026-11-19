@@ -13,16 +13,33 @@ type User struct {
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
 	AvatarURL    string    `json:"avatar_url,omitempty"`
+	GroupName    string    `json:"group_name"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-type RegisterRequest struct {
-	Username string `json:"username"`
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+// AcademicGroups is the single source of truth for the values accepted at
+// registration. The database keeps the same five rows and enforces the FK.
+var AcademicGroups = []string{"Т-491", "Т-492", "Т-493", "Т-494", "Т-495"}
+
+func IsAcademicGroup(name string) bool {
+	for _, group := range AcademicGroups {
+		if group == name {
+			return true
+		}
+	}
+	return false
 }
 
+type RegisterRequest struct {
+	Username  string `json:"username"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	GroupName string `json:"group_name"`
+}
+
+// LoginRequest keeps the historical `email` JSON field for compatibility, but
+// the value may be either an email address or a username.
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -31,6 +48,15 @@ type LoginRequest struct {
 type AuthResponse struct {
 	Token string `json:"token"`
 	User  *User  `json:"user"`
+}
+
+// UpdateProfileRequest intentionally has no group_name: the academic group is
+// chosen once at registration and cannot be changed by this endpoint.
+type UpdateProfileRequest struct {
+	Name      string `json:"name"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
 }
 
 type Chat struct {
@@ -66,7 +92,8 @@ type ChatMember struct {
 }
 
 type CreateMessageRequest struct {
-	Content string `json:"content"`
+	Content   string     `json:"content"`
+	ReplyToID *uuid.UUID `json:"reply_to_id,omitempty"`
 }
 
 type CreatePrivateChatRequest struct {

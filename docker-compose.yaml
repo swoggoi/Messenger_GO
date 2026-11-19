@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build: .
@@ -9,9 +7,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - postgres
-      - redis
-      - kafka
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - messenger-net
     restart: unless-stopped
@@ -27,6 +26,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U messenger -d messenger_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     networks:
       - messenger-net
 
@@ -41,6 +45,7 @@ services:
       - messenger-net
 
   kafka:
+    profiles: ["kafka"]
     image: apache/kafka:latest
     container_name: messenger-kafka
     ports:

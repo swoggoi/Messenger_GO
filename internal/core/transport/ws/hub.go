@@ -8,17 +8,12 @@ import (
 
 	"messenger/internal/core/domain"
 	"messenger/internal/core/redis"
+	httpmw "messenger/internal/core/transport/http/middleware"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type Client struct {
 	hub    *Hub
@@ -28,17 +23,27 @@ type Client struct {
 }
 
 type Hub struct {
-	mu          sync.RWMutex
-	clients     map[uuid.UUID]map[*Client]bool
-	jwtSecret   string
-	redisClient *redis.Client
+	mu             sync.RWMutex
+	clients        map[uuid.UUID]map[*Client]bool
+	jwtSecret      string
+	redisClient    *redis.Client
+	allowedOrigins []string
 }
 
-func NewHub(jwtSecret string, rdb *redis.Client) *Hub {
+func NewHub(jwtSecret string, rdb *redis.Client, allowedOrigins []string) *Hub {
 	return &Hub{
-		clients:     make(map[uuid.UUID]map[*Client]bool),
-		jwtSecret:   jwtSecret,
-		redisClient: rdb,
+		clients:        make(map[uuid.UUID]map[*Client]bool),
+		jwtSecret:      jwtSecret,
+		redisClient:    rdb,
+		allowedOrigins: allowedOrigins,
+	}
+}
+
+func (h *Hub) upgrader(r *http.Request) websocket.Upgrader {
+	return websocket.Upgrader{
+		CheckOrigin: func(req *http.Request) bool {
+			return httpmw.OriginAllowed(req.Header.Get("Origin"), r, h.allowedOrigins)
+		},
 	}
 }
 
@@ -49,16 +54,20 @@ func (h *Hub) BroadcastToUsers(userIDs []uuid.UUID, event domain.WSEvent) {
 	}
 
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	targets := make([]*Client, 0)
 	for _, userID := range userIDs {
 		for client := range h.clients[userID] {
-			select {
-			case client.send <- data:
-			default:
-				close(client.send)
-				delete(h.clients[userID], client)
-			}
+			targets = append(targets, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range targets {
+		select {
+		case client.send <- data:
+		default:
+			// Медленный клиент не должен блокировать рассылку; polling fallback
+			// подхватит сообщение, если событие пропущено.
 		}
 	}
 }
@@ -69,27 +78,24 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token required", http.StatusUnauthorized)
 		return
 	}
-
 	userID, err := parseToken(token, h.jwtSecret)
 	if err != nil {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
+	if !httpmw.OriginAllowed(r.Header.Get("Origin"), r, h.allowedOrigins) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
 
+	upgrader := h.upgrader(r)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 
-	client := &Client{
-		hub:    h,
-		conn:   conn,
-		userID: userID,
-		send:   make(chan []byte, 64),
-	}
-
+	client := &Client{hub: h, conn: conn, userID: userID, send: make(chan []byte, 64)}
 	h.register(client)
-
 	go client.writePump()
 	go client.readPump()
 }
@@ -97,31 +103,31 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) register(client *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
 	if h.clients[client.userID] == nil {
 		h.clients[client.userID] = make(map[*Client]bool)
 	}
 	h.clients[client.userID][client] = true
-
 	if h.redisClient != nil {
-		h.redisClient.SetUserOnline(context.Background(), client.userID.String())
+		_ = h.redisClient.SetUserOnline(context.Background(), client.userID.String())
 	}
 }
 
 func (h *Hub) unregister(client *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	if conns, ok := h.clients[client.userID]; ok {
-		if _, exists := conns[client]; exists {
-			delete(conns, client)
-			close(client.send)
-		}
-		if len(conns) == 0 {
-			delete(h.clients, client.userID)
-			if h.redisClient != nil {
-				h.redisClient.SetUserOffline(context.Background(), client.userID.String())
-			}
+	conns, ok := h.clients[client.userID]
+	if !ok {
+		return
+	}
+	if _, exists := conns[client]; !exists {
+		return
+	}
+	delete(conns, client)
+	close(client.send)
+	if len(conns) == 0 {
+		delete(h.clients, client.userID)
+		if h.redisClient != nil {
+			_ = h.redisClient.SetUserOffline(context.Background(), client.userID.String())
 		}
 	}
 }
@@ -129,43 +135,34 @@ func (h *Hub) unregister(client *Client) {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister(c)
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
-
 	for {
-		_, _, err := c.conn.ReadMessage()
-		if err != nil {
-			break
+		if _, _, err := c.conn.ReadMessage(); err != nil {
+			return
 		}
 	}
 }
 
 func (c *Client) writePump() {
-	defer c.conn.Close()
-
 	for msg := range c.send {
 		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			break
+			return
 		}
 	}
 }
 
 func parseToken(tokenString, secret string) (uuid.UUID, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
-		}
-		return []byte(secret), nil
-	})
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims,
+		func(token *jwt.Token) (interface{}, error) {
+			return []byte(secret), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	)
 	if err != nil || !token.Valid {
-		return uuid.Nil, err
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
 		return uuid.Nil, jwt.ErrTokenInvalidClaims
 	}
-
 	switch v := claims["user_id"].(type) {
 	case string:
 		return uuid.Parse(v)

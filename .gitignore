@@ -11,6 +11,5 @@ coverage.out
 .DS_Store
 Thumbs.db
 
-
-# Временно
-web/
+# Загруженные аватары создаются приложением
+web/uploads/

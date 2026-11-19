@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141414">
+  <title>БипЧат — сообщения</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app wide">
+    <nav class="rail" id="rail" data-active="messages.html"></nav>
+
+    <aside class="chats" aria-label="Список чатов">
+      <div class="chats-head">
+        <button class="icon-btn sidebar-toggle" id="sidebar-toggle" type="button" title="Свернуть список чатов" aria-label="Свернуть список чатов"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <h2>Сообщения</h2>
+      </div>
+      <div class="search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="input" id="chat-search" aria-label="Поиск по чатам">
+        <button class="icon-btn search-btn" id="chat-search-btn" type="button" title="Поиск по чатам" aria-label="Поиск по чатам"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
+      </div>
+      <div class="chat-items" id="chat-items"></div>
+      <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Изменить ширину списка чатов" title="Тяните, чтобы изменить ширину · двойной клик — свернуть"></div>
+    </aside>
+
+    <section class="chat" aria-label="Переписка">
+      <header class="chat-head">
+        <button class="icon-btn chat-back" id="chat-back" type="button" aria-label="Назад к чатам"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <button class="head-profile" id="head-profile" type="button" title="Открыть профиль">
+          <div class="avatar c-moss" id="head-av">Б</div>
+          <div class="chat-head-copy">
+            <div class="t" id="head-t">Выберите чат</div>
+            <div class="s" id="head-s">Ваши сообщения появятся здесь</div>
+          </div>
+        </button>
+        <div class="tools"></div>
+      </header>
+      <div class="pinned hidden" id="pinned"></div>
+      <div class="messages" id="messages"><div class="message-empty">Загружаем переписки…</div></div>
+      <div class="reply-bar hidden" id="reply-bar">
+        <div class="reply-copy"><span class="t" id="reply-name"></span><span class="s" id="reply-text"></span></div>
+        <button class="icon-btn" id="reply-cancel" type="button" aria-label="Отменить ответ"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="selection-bar hidden" id="selection-bar">
+        <span class="selection-count" id="selection-count"></span>
+        <button class="btn" id="selection-copy" type="button">Копировать</button>
+        <button class="btn" id="selection-delete" type="button">Удалить</button>
+        <button class="btn primary" id="selection-cancel" type="button">Отменить</button>
+      </div>
+      <form class="composer" id="composer-form">
+        <textarea id="composer-input" name="message" rows="1" autocomplete="off" aria-label="Текст сообщения" maxlength="10000"></textarea>
+        <button class="send" type="submit" title="Отправить" aria-label="Отправить"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></button>
+      </form>
+    </section>
+  </div>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

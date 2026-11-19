@@ -13,6 +13,8 @@ type Message struct {
 	SenderName string     `json:"sender_name"`
 	Content    string     `json:"content"`
 	Status     string     `json:"status"`
+	ReplyToID  *uuid.UUID `json:"reply_to_id,omitempty"`
+	IsPinned   bool       `json:"is_pinned"`
 	EditedAt   *time.Time `json:"edited_at,omitempty"`
 	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
