@@ -1,13 +1,16 @@
 package http
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-// OriginAllowed accepts same-origin requests plus an explicit allowlist from
-// CORS_ALLOWED_ORIGINS. Wildcard CORS is not safe with bearer JWTs.
+// OriginAllowed accepts same-origin requests plus exact origins or subdomain
+// wildcards from CORS_ALLOWED_ORIGINS, e.g. https://*.trycloudflare.com.
+// A wildcard is only valid as the first DNS label; a blanket `*` is never
+// allowed because that would be unsafe with bearer JWTs.
 func OriginAllowed(origin string, r *http.Request, allowedOrigins []string) bool {
 	if origin == "" {
 		return true
@@ -20,12 +23,58 @@ func OriginAllowed(origin string, r *http.Request, allowedOrigins []string) bool
 		return true
 	}
 	for _, allowed := range allowedOrigins {
-		allowed = strings.TrimSpace(allowed)
-		if allowed != "" && strings.EqualFold(origin, allowed) {
+		if originMatchesAllowlist(origin, parsed, allowed) {
 			return true
 		}
 	}
 	return false
+}
+
+// originMatchesAllowlist matches an origin against one CORS_ALLOWED_ORIGINS entry:
+//   - https://example.com   — exact origin
+//   - https://*.example.com — any subdomain, HTTPS only
+//   - *.example.com         — any subdomain, any scheme
+func originMatchesAllowlist(origin string, parsed *url.URL, allowed string) bool {
+	allowed = strings.ToLower(strings.TrimSpace(allowed))
+	if allowed == "" {
+		return false
+	}
+	if !strings.Contains(allowed, "*") {
+		return strings.EqualFold(origin, allowed)
+	}
+
+	scheme := ""
+	pattern := allowed
+	if idx := strings.Index(pattern, "://"); idx >= 0 {
+		scheme = pattern[:idx]
+		pattern = pattern[idx+3:]
+		if strings.Contains(scheme, "*") {
+			return false
+		}
+	}
+	if !strings.HasPrefix(pattern, "*.") || strings.Contains(pattern[2:], "*") {
+		return false
+	}
+	if scheme != "" && !strings.EqualFold(parsed.Scheme, scheme) {
+		return false
+	}
+
+	base := pattern[2:]
+	baseHost := base
+	basePort := ""
+	if h, port, err := net.SplitHostPort(base); err == nil {
+		baseHost, basePort = h, port
+	}
+	if basePort != "" && parsed.Port() != basePort {
+		return false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	suffix := "." + baseHost
+	if host == baseHost || !strings.HasSuffix(host, suffix) {
+		return false
+	}
+	return strings.TrimSuffix(host, suffix) != ""
 }
 
 func CORS(next http.Handler, allowedOrigins []string) http.Handler {
